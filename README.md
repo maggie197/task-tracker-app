@@ -32,10 +32,11 @@ A complete full-stack task management application built with TypeScript, Node.js
 task-manager-app/
 ├── backend/
 │   ├── src/
-│   │   ├── server.ts        # Express server setup
 │   │   ├── routes.ts        # API route handlers
+│   │   ├── server.ts        # Express server setup
 │   │   ├── database.ts      # In-memory data storage
 │   │   └── types.ts         # TypeScript interfaces
+│   ├── package-lock.json
 │   ├── package.json
 │   └── tsconfig.json
 │
@@ -48,8 +49,12 @@ task-manager-app/
     │   ├── types.ts         # TypeScript interfaces
     │   ├── main.tsx         # Application entry point
     │   └── index.css        # Global styles
+    ├── index.html
+    ├── package-lock.json
     ├── package.json
-    └── tsconfig.json
+    ├── tsconfig.json
+    ├── tsconfig.node.json
+    └── vite.config.ts
 ```
 
 ##  Setup Instructions
