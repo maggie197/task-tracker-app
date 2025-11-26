@@ -1,340 +1,229 @@
 import React, { useState, useEffect } from 'react';
-import { taskService } from './api';
-import { Task, CreateTaskDto, UpdateTaskDto } from './types';
-import { TaskForm } from './TaskForm';
-import { TaskItem } from './TaskItem';
+import { useAuth } from './AuthContext';
+import AuthPage from './AuthPage';
+import TaskForm from './TaskForm';
+import TaskList from './TaskList';
+import { fetchTasks, createTask, updateTask, deleteTask, toggleTaskComplete } from './taskApi';
 
-// Main application component
-export const App: React.FC = () => {
-  // STATE MANAGEMENT
-  // All tasks from the backend
+/**
+ * Main App Component
+ * 
+ * Shows login/signup if not authenticated
+ * Shows task manager if authenticated
+ */
+
+interface Task {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  status: string;
+  isComplete: boolean;
+  createdAt: string;
+}
+
+function App() {
+  const { user, sessionId, logout, isLoading: authLoading } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
-  
-  // Currently editing task (null if creating new)
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  
-  // Loading states
-  const [isLoading, setIsLoading] = useState(false);
-  const [isFetching, setIsFetching] = useState(true);
-  
-  // Error handling
-  const [error, setError] = useState<string | null>(null);
-  
-  // Filter state
-  const [filter, setFilter] = useState<'all' | 'pending' | 'complete'>('all');
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [error, setError] = useState('');
 
-  // FETCH TASKS ON COMPONENT MOUNT
-  // useEffect runs after component renders
+  // Load tasks when user logs in
   useEffect(() => {
-    fetchTasks();
-  }, []); // Empty array means run once on mount
+    if (user && sessionId) {
+      loadTasks();
+    } else {
+      setTasks([]); // Clear tasks when logged out
+    }
+  }, [user, sessionId]);
 
-  // Fetch all tasks from API
-  const fetchTasks = async () => {
+  /**
+   * Load tasks from backend
+   */
+  const loadTasks = async () => {
+    setIsLoadingTasks(true);
+    setError('');
     try {
-      setIsFetching(true);
-      setError(null);
-      const data = await taskService.getAllTasks();
+      const data = await fetchTasks(sessionId);
       setTasks(data);
     } catch (err) {
-      setError('Failed to fetch tasks. Make sure the backend is running on port 3001.');
-      console.error('Error fetching tasks:', err);
+      setError('Failed to load tasks');
+      console.error(err);
     } finally {
-      setIsFetching(false);
+      setIsLoadingTasks(false);
     }
   };
 
-  // CREATE new task
-  const handleCreateTask = async (data: CreateTaskDto) => {
+  /**
+   * Add a new task
+   */
+  const addTask = async (title: string, description: string) => {
     try {
-      setIsLoading(true);
-      setError(null);
-      const newTask = await taskService.createTask(data);
-      setTasks([newTask, ...tasks]); // Add to beginning of list
+      const newTask = await createTask(sessionId, title, description);
+      setTasks([...tasks, newTask]);
     } catch (err) {
-      setError('Failed to create task');
-      console.error('Error creating task:', err);
-    } finally {
-      setIsLoading(false);
+      alert('Failed to create task');
+      console.error(err);
     }
   };
 
-  // UPDATE existing task
-  const handleUpdateTask = async (data: CreateTaskDto) => {
-    if (!editingTask) return;
-
+  /**
+   * Edit a task
+   */
+  const editTask = async (id: string, title: string, description: string) => {
     try {
-      setIsLoading(true);
-      setError(null);
-      const updateData: UpdateTaskDto = {
-        title: data.title,
-        description: data.description,
-        status: data.status,
-      };
-      const updatedTask = await taskService.updateTask(editingTask.id, updateData);
-      
-      // Update task in list
-      setTasks(tasks.map(task => 
-        task.id === updatedTask.id ? updatedTask : task
-      ));
-      
-      setEditingTask(null); // Exit edit mode
+      const updatedTask = await updateTask(sessionId, id, { title, description });
+      setTasks(tasks.map(t => t.id === id ? updatedTask : t));
     } catch (err) {
-      setError('Failed to update task');
-      console.error('Error updating task:', err);
-    } finally {
-      setIsLoading(false);
+      alert('Failed to update task');
+      console.error(err);
     }
   };
 
-  // DELETE task
+  /**
+   * Delete a task
+   */
   const handleDeleteTask = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this task?')) {
+      return;
+    }
+    
     try {
-      setError(null);
-      await taskService.deleteTask(id);
-      setTasks(tasks.filter(task => task.id !== id));
+      await deleteTask(sessionId, id);
+      setTasks(tasks.filter(t => t.id !== id));
     } catch (err) {
-      setError('Failed to delete task');
-      console.error('Error deleting task:', err);
+      alert('Failed to delete task');
+      console.error(err);
     }
   };
 
-  // TOGGLE task status
-  const handleToggleStatus = async (id: string) => {
+  /**
+   * Toggle task completion
+   */
+  const toggleComplete = async (id: string) => {
     try {
-      setError(null);
-      const updatedTask = await taskService.toggleTaskStatus(id);
-      setTasks(tasks.map(task => 
-        task.id === updatedTask.id ? updatedTask : task
-      ));
+      const updatedTask = await toggleTaskComplete(sessionId, id);
+      setTasks(tasks.map(t => t.id === id ? updatedTask : t));
     } catch (err) {
-      setError('Failed to toggle task status');
-      console.error('Error toggling task status:', err);
+      alert('Failed to toggle task');
+      console.error(err);
     }
   };
 
-  // Start editing a task
-  const handleEditTask = (task: Task) => {
-    setEditingTask(task);
-    // Scroll to top where the form is
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  // Show loading while checking auth status
+  if (authLoading) {
+    return (
+      <div style={styles.loading}>
+        <p>Loading...</p>
+      </div>
+    );
+  }
 
-  // Cancel editing
-  const handleCancelEdit = () => {
-    setEditingTask(null);
-  };
+  // Show login/signup if not authenticated
+  if (!user) {
+    return <AuthPage />;
+  }
 
-  // FILTER TASKS
-  const filteredTasks = tasks.filter(task => {
-    if (filter === 'all') return true;
-    return task.status === filter;
-  });
-
-  // STATISTICS
-  const stats = {
-    total: tasks.length,
-    pending: tasks.filter(t => t.status === 'pending').length,
-    complete: tasks.filter(t => t.status === 'complete').length,
-  };
-
+  // Show task manager if authenticated
   return (
     <div style={styles.container}>
-      <header style={styles.header}>
-        <h1 style={styles.title}>📋 Task Manager</h1>
-        <p style={styles.subtitle}>Manage your tasks efficiently</p>
-      </header>
+      {/* Header with user info and logout */}
+      <div style={styles.header}>
+        <h1 style={styles.title}>Task Manager</h1>
+        <div style={styles.userInfo}>
+          <span style={styles.username}>👤 {user.username}</span>
+          <button onClick={logout} style={styles.logoutButton}>
+            Logout
+          </button>
+        </div>
+      </div>
 
-      {/* ERROR MESSAGE */}
+      {/* Add task form */}
+      <TaskForm onAddTask={addTask} />
+
+      <hr style={styles.divider} />
+
+      {/* Task list */}
+      <h2 style={styles.subtitle}>
+        Your Tasks ({tasks.length} Total)
+      </h2>
+
       {error && (
-        <div style={styles.errorBanner}>
-          ⚠️ {error}
+        <div style={styles.error}>
+          {error}
         </div>
       )}
 
-      {/* STATISTICS */}
-      <div style={styles.stats}>
-        <div style={styles.statCard}>
-          <div style={styles.statNumber}>{stats.total}</div>
-          <div style={styles.statLabel}>Total Tasks</div>
-        </div>
-        <div style={styles.statCard}>
-          <div style={{ ...styles.statNumber, color: '#ff9800' }}>{stats.pending}</div>
-          <div style={styles.statLabel}>Pending</div>
-        </div>
-        <div style={styles.statCard}>
-          <div style={{ ...styles.statNumber, color: '#4CAF50' }}>{stats.complete}</div>
-          <div style={styles.statLabel}>Complete</div>
-        </div>
-      </div>
-
-      {/* TASK FORM */}
-      <div style={styles.section}>
-        <h2 style={styles.sectionTitle}>
-          {editingTask ? '✏️ Edit Task' : '➕ Add New Task'}
-        </h2>
-        <TaskForm
-          onSubmit={editingTask ? handleUpdateTask : handleCreateTask}
-          onCancel={editingTask ? handleCancelEdit : undefined}
-          initialData={editingTask || undefined}
-          isLoading={isLoading}
+      {isLoadingTasks ? (
+        <p>Loading tasks...</p>
+      ) : (
+        <TaskList
+          tasks={tasks}
+          onToggleComplete={toggleComplete}
+          onDelete={handleDeleteTask}
+          onEdit={editTask}
         />
-      </div>
-
-      {/* FILTER BUTTONS */}
-      <div style={styles.filterSection}>
-        <h2 style={styles.sectionTitle}>📝 Task List</h2>
-        <div style={styles.filterButtons}>
-          <button
-            onClick={() => setFilter('all')}
-            style={{
-              ...styles.filterButton,
-              ...(filter === 'all' ? styles.activeFilter : {}),
-            }}
-          >
-            All ({stats.total})
-          </button>
-          <button
-            onClick={() => setFilter('pending')}
-            style={{
-              ...styles.filterButton,
-              ...(filter === 'pending' ? styles.activeFilter : {}),
-            }}
-          >
-            Pending ({stats.pending})
-          </button>
-          <button
-            onClick={() => setFilter('complete')}
-            style={{
-              ...styles.filterButton,
-              ...(filter === 'complete' ? styles.activeFilter : {}),
-            }}
-          >
-            Complete ({stats.complete})
-          </button>
-        </div>
-      </div>
-
-      {/* TASK LIST */}
-      <div style={styles.section}>
-        {isFetching ? (
-          <div style={styles.loading}>Loading tasks...</div>
-        ) : filteredTasks.length === 0 ? (
-          <div style={styles.emptyState}>
-            <p>No {filter !== 'all' ? filter : ''} tasks found.</p>
-            <p>Create your first task above! 👆</p>
-          </div>
-        ) : (
-          filteredTasks.map(task => (
-            <TaskItem
-              key={task.id}
-              task={task}
-              onEdit={handleEditTask}
-              onDelete={handleDeleteTask}
-              onToggleStatus={handleToggleStatus}
-            />
-          ))
-        )}
-      </div>
+      )}
     </div>
   );
-};
+}
 
-// STYLES
-const styles = {
+// Styles
+const styles: { [key: string]: React.CSSProperties } = {
   container: {
-    maxWidth: '900px',
-    margin: '0 auto',
     padding: '20px',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    maxWidth: '800px',
+    margin: '0 auto',
   },
   header: {
-    textAlign: 'center' as const,
-    marginBottom: '30px',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '2rem',
   },
   title: {
-    fontSize: '36px',
-    margin: '0 0 10px 0',
+    margin: 0,
     color: '#333',
+  },
+  userInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem',
+  },
+  username: {
+    color: '#666',
+    fontWeight: 'bold',
+  },
+  logoutButton: {
+    padding: '0.5rem 1rem',
+    backgroundColor: '#dc3545',
+    color: 'white',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontWeight: 'bold',
+  },
+  divider: {
+    margin: '2rem 0',
+    border: 'none',
+    borderTop: '1px solid #ddd',
   },
   subtitle: {
-    fontSize: '16px',
-    color: '#666',
-    margin: 0,
-  },
-  errorBanner: {
-    backgroundColor: '#ffebee',
-    color: '#c62828',
-    padding: '15px',
-    borderRadius: '4px',
-    marginBottom: '20px',
-    border: '1px solid #ef5350',
-  },
-  stats: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '15px',
-    marginBottom: '30px',
-  },
-  statCard: {
-    backgroundColor: 'white',
-    padding: '20px',
-    borderRadius: '8px',
-    textAlign: 'center' as const,
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-  },
-  statNumber: {
-    fontSize: '32px',
-    fontWeight: 'bold',
-    color: '#2196F3',
-  },
-  statLabel: {
-    fontSize: '14px',
-    color: '#666',
-    marginTop: '5px',
-  },
-  section: {
-    marginBottom: '30px',
-  },
-  sectionTitle: {
-    fontSize: '24px',
-    marginBottom: '15px',
-    color: '#333',
-  },
-  filterSection: {
-    marginBottom: '20px',
-  },
-  filterButtons: {
-    display: 'flex',
-    gap: '10px',
-    flexWrap: 'wrap' as const,
-  },
-  filterButton: {
-    padding: '10px 20px',
-    border: '2px solid #ddd',
-    borderRadius: '20px',
-    backgroundColor: 'white',
-    cursor: 'pointer',
-    fontSize: '14px',
-    fontWeight: 'bold',
-    transition: 'all 0.2s',
-  },
-  activeFilter: {
-    backgroundColor: '#2196F3',
-    color: 'white',
-    borderColor: '#2196F3',
+    color: '#555',
   },
   loading: {
-    textAlign: 'center' as const,
-    padding: '40px',
-    fontSize: '18px',
-    color: '#666',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: '100vh',
   },
-  emptyState: {
-    textAlign: 'center' as const,
-    padding: '40px',
-    backgroundColor: '#f9f9f9',
-    borderRadius: '8px',
-    color: '#666',
+  error: {
+    backgroundColor: '#fee',
+    color: '#c33',
+    padding: '1rem',
+    borderRadius: '4px',
+    marginBottom: '1rem',
   },
 };
+
+export default App;
